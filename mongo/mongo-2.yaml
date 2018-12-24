@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rs-test-mongo-2
+  labels:
+    component: 'rs-test-mongo-2'
+spec:
+  storageClassName: standard
+  capacity:
+    storage: 200Gi
+  accessModes:
+    - ReadWriteOnce
+  gcePersistentDisk:
+    pdName: rs-test-mongo-2
+    fsType: ext4
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mongo-2
+  namespace: rs-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 200Gi
+  storageClassName: standard
+  selector:
+    matchLabels:
+      component: 'rs-test-mongo-2'
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+   name: mongo-2-deploy
+   namespace: rs-test
+
+spec:
+   replicas: 1
+   template:
+      metadata:
+         labels:
+            group: db
+            component: mongo-2
+            mongors: primary
+
+      spec:
+         nodeSelector:
+           availability: "always"      
+         terminationGracePeriodSeconds: 60
+         containers:
+         - name: mongo-2
+           image: mongo:3.6
+           command:
+            - "mongod"
+            - "--config=/etc/mongodb.conf"
+            # - "--bind_ip_all"
+           livenessProbe:
+              tcpSocket:
+                 port: 27017
+              initialDelaySeconds: 36000
+              periodSeconds: 60
+
+           ports:
+           - containerPort: 27017
+
+          #  resources:
+          #    requests:
+          #       memory: "1G"
+          #    limits:
+          #       memory: "2G"
+
+           volumeMounts:
+           - name: tz-volume
+             mountPath: /etc/localtime
+             readOnly: true
+
+           - name: config-volume
+             mountPath: /etc/mongodb.conf
+             subPath: mongodb.conf
+
+           - name: mongodb-volume
+             mountPath: /data
+
+         volumes:
+         - name: tz-volume
+           hostPath:
+             path: /etc/localtime
+
+         - name: config-volume
+           configMap:
+             name: mongo-config
+
+         - name: mongodb-volume
+           persistentVolumeClaim:
+             claimName: mongo-2 
